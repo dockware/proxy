@@ -1,0 +1,82 @@
+# Official Dockware Proxy Image
+# Tag: {{ orca.tag }}
+# Copyright {{ "now"|date("Y") }} dasistweb GmbH
+
+FROM nginx:1.15.3
+
+LABEL title="Dockware {{ orca.image }}:{{ orca.tag }}" \
+      version="{{version}}" \
+      maintainer="dasistweb GmbH"
+
+
+{% block image_variables %}
+## ***********************************************************************
+##  IMAGE VARIABLES
+## ***********************************************************************
+{% block image_variables_logs %}
+ENV ACCESS_LOG 0
+RUN echo "export ACCESS_LOG=${ACCESS_LOG}" >> /etc/profile
+{% endblock %}
+
+{% block image_variables_cfcountry %}
+ENV CF_COUNTRY 'not-set'
+RUN echo "export CF_COUNTRY=${CF_COUNTRY}" >> /etc/profile
+{% endblock %}
+{% endblock %}
+
+
+RUN apt-get update \
+    # ----------------------------------------------------
+    && date >/build-date.txt \
+    && mkdir -p /var/wwws \
+    && mkdir -p /var/www/scripts \
+    # ----------------------------------------------------
+    && apt-get install -y wget \
+    # ----------------------------------------------------
+    && apt-get install -y openssl \
+    && mkdir /etc/nginx/ssl \
+    && openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/nginx/ssl/selfsigned.key -out /etc/nginx/ssl/selfsigned.crt -subj "/C=XX/ST=XXXX/L=XXXX/O=XXXX/CN=localhost" \
+    # ----------------------------------------------------
+    && apt-get install -y libgd-dev \
+    # ----------------------------------------------------
+    && rm -rf /etc/nginx/conf.d/example_ssl.conf  \
+    && mkdir -p /etc/nginx/conf.stream.d \
+    && mkdir -p /etc/nginx/conf.upstream.d \
+    # ----------------------------------------------------
+    && rm -rf /var/lib/apt/lists/* /var/cache/apt/*
+
+
+ADD ./config/nginx.conf /etc/nginx/nginx.conf
+ADD ./config/proxy.conf /etc/nginx/proxy.conf
+
+ADD config/default/default.conf /etc/nginx/conf.d/default.conf
+ADD config/default/418.html /usr/share/nginx/html/418.html
+
+
+
+## ***********************************************************************
+##  DOWNLOAD and BUILD CLOUDFLARE IP CONFIG
+## ***********************************************************************
+RUN wget --quiet --output-document=/tmp/cloudflare-ip4.txt --no-check-certificate https://www.cloudflare.com/ips-v4 \
+    && wget --quiet --output-document=/tmp/cloudflare-ip6.txt --no-check-certificate https://www.cloudflare.com/ips-v6 \
+    && echo "# Cloudflare IP Ranges" > /etc/nginx/cloudflare.conf \
+    && echo "# Generated at $(date) by Docker" >> /etc/nginx/cloudflare.conf \
+    && echo "" >> /etc/nginx/cloudflare.conf \
+    && echo "# IPv4 from https://www.cloudflare.com/ips-v4" >> /etc/nginx/cloudflare.conf \
+    && awk '{ print "set_real_ip_from    " $0 ";" }' /tmp/cloudflare-ip4.txt >> /etc/nginx/cloudflare.conf \
+    && echo "" >> /etc/nginx/cloudflare.conf \
+    && echo "# IPv6 from https://www.cloudflare.com/ips-v6" >> /etc/nginx/cloudflare.conf \
+    && awk '{ print "set_real_ip_from    " $0 ";" }' /tmp/cloudflare-ip6.txt >> /etc/nginx/cloudflare.conf \
+    && echo "" >> /etc/nginx/cloudflare.conf \
+    && echo "real_ip_header CF-Connecting-IP;" >> /etc/nginx/cloudflare.conf \
+    && echo "" >> /etc/nginx/cloudflare.conf \
+    && rm -f /tmp/cloudflare-ip4.txt \
+    && rm -f /tmp/cloudflare-ip6.txt
+
+
+
+ADD entrypoint.sh /entrypoint.sh
+RUN chmod 755 /*.sh
+
+CMD ["/entrypoint.sh"]
+

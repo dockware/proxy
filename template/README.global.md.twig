@@ -1,0 +1,270 @@
+# dockware #{{ orca.image }}
+
+
+## Quick reference
+{% block quick_reference %}
+Where to get help: https://www.dockware.io
+
+Where to file issues: https://www.dockware.io
+
+Documentation: https://dockware.io/docs
+
+Maintained by: dasistweb GmbH (https://www.dasistweb.de)
+{% endblock %}
+
+
+## What is dockware/{{ orca.image }}?
+{% block what_is %}
+dockware proxy is a managed NGINX proxy for all kinds or projects.
+The main aim is to have an easy to use companion for all kinds of web related projects.
+
+The original focus was to have a companion for the dockware Shopware and symfony projects.
+{% endblock %}
+
+
+
+## How to use this image
+
+### Quick Start
+If you want to start the image and give it a try, simply create a custom config for your nginx and use the following command.
+
+```ruby
+$ docker run --rm -p 80:80 -v ./my-http.conf:/etc/nginx/conf.d/my-http.conf dockware/{{ orca.image }}:{{ orca.tag }}
+```
+
+
+{% block env %}
+### Environment Variables
+This image comes with different features that can be set with the ENV variables.
+
+| Feature  |  Default | Description |
+|---|---| --- |
+| ACCESS_LOG  | 0 | Enable (1) or disable (0) access logs. |
+| CF_COUNTRY  | not-set | Simulate the country header with any (ISO2) value that Cloudflare will also add. This is perfect for testing Cloudflare compatibility when developing apps. |
+{% endblock %}
+
+
+
+## Project Configuration
+Please add your custom configuration for NGINX in one of these folders:
+
+* /etc/nginx/conf.d
+* /etc/nginx/conf.stream.d
+
+The default HTTP configurations should be inside "conf.d" while any additional TCP related configuration should be added to "conf.stream.d".
+
+
+## Docker Compose Template
+This is a full template with everything that can be done using dockware/proxy.
+Please note that not all of these settings might be necessary.
+
+```ruby
+{% block compose_template %}
+proxy:
+    image: dockware/{{ orca.image }}:{{ orca.tag }}
+    container_name: proxy
+    ports:
+        - "80:80"
+        - "443:443"
+    environment:
+        - ACCESS_LOG=1
+        - CF_COUNTRY=DE
+{% endblock %}
+```
+
+{% block configuration %}
+## Configuration Options
+
+{% block configuration_project %}
+## NGINX Projects Configuration
+The best way to use the image is to create a bind mound for the folder `/etc/nginx/conf.d`.
+All files inside that folder will be read from NGINX.
+
+The proxy is already optimized for Shopware and web related projects.
+If you need to adjust things like "max-post-size", feel free to do this in your custom configuration.
+{% endblock %}
+
+
+{% block configuration_ssl %}
+## Default-SSL Certificates
+If you have a local or testing server, you can use the built in selfsigned certificates `selfsigned.crt` and `selfsigned.key`.
+They come out of the box and are ready to be used.
+
+Here is a configuration sample:
+
+```ruby
+ssl_certificate /etc/nginx/ssl/selfsigned.crt;
+ssl_certificate_key /etc/nginx/ssl/selfsigned.key;
+```
+{% endblock %}
+
+{% block configuration_custom_ssl %}
+## Custom SSL Certificates
+If you want to add your own certificates, just mount them to any directory and use them in your configuration.
+
+```ruby
+volumes:
+    - ./my-certs/:/etc/nginx/my-certs
+```
+
+Don't forget to update your configuration files too:
+
+```ruby
+ssl_certificate /etc/nginx/my-certs/my-cert.crt;
+ssl_certificate_key /etc/nginx/my-certs/my-cert.key;
+```
+{% endblock %}
+
+
+{% block configuration_basic_auth %}
+## Basic Auth
+If you want to use basic authentication, please create a `.htpasswd` file and mount it anywhere in the container.
+Now simply use it in your configuration like this:
+
+```ruby
+server {
+    ...
+    # BASIC AUTHENTICATION
+    satisfy any;
+    deny all;
+    auth_basic on;
+    auth_basic_user_file /etc/nginx/.htpasswd;
+    ...
+}
+```
+{% endblock %}
+
+
+{% block configuration_ip_whitelist %}
+## IP Whitelists
+In addition to basic authentication, its also possible to whitelist custom IPs in NGINX.
+Just use the `allow` keyword before `deny all`.
+
+```ruby
+server {
+    ...
+    # allow IP address
+    allow x.x.x.x;
+    deny all;
+    ...
+}
+```
+
+You can also refer to additional files like this:
+
+```ruby
+server {
+    ...
+    # allow IP address
+    include /xx/xx/my-ip-whitelist.conf
+    ...
+}
+```
+{% endblock %}
+
+{% block configuration_tcp_streams %}
+## Streams (TCP, ...)
+If you want to use a TCP related configuration, a new folder has been created and exposed such as the `conf.d` directory for your configuration files.
+All files placed in `conf.stream.d` will be read from NGINX.
+This is perfect if you want to route MySQL connections, or even restrict connections to your database, REDIS or other services.
+
+```ruby
+volumes:
+    - "./proxy/my-tcp-endpoint.conf:/etc/nginx/conf.stream.d/tcp-endpoint.conf"
+```
+
+Here is a sample on how your configuration can look like:
+
+```ruby
+server {
+    listen 3306;
+    # pass on to container (no http:// prefix!)
+    proxy_pass db:3306;
+}
+```
+
+If you now start a TCP connection to your proxy using port 3306, it will be passed on to your database container on port 3306.
+{% endblock %}
+
+
+{% block configuration_cloudflare %}
+## Cloudflare Country Detection
+Cloudflare adds a custom header with the country ISO2 code of the visitor to the request.
+
+If you want to simulate this, just provide the ISO2 value in the environment variable `CF_COUNTRY`.
+å
+The dockware proxy will add that request header entry exactly like Cloudflare will do it.
+
+Attention:
+This feature does only work if no custom header modifications are done within your location block configuration (no inheritance possible).
+
+```ruby
+environment:
+    - CF_COUNTRY=UK
+```
+
+Sample to access the country in PHP:
+
+```ruby
+$visitorCountry = $_SERVER["HTTP_CF_IPCOUNTRY"];
+```
+{% endblock %}
+
+
+{% block configuration_load_balancing %}
+## Load Balancing
+The reverse proxy can also be used as a load balancer.
+For this, please use a so called `upstream` when routing to your container.
+An upstream is a list of actual server instances or IP addresses.
+
+
+Normally upstreams are done directly within the server configuration files.
+
+dockware provides you with a custom directory `/etc/nginx/conf.upstream.d` that watches all `*.conf` files in there.
+
+The following sample shows how to configure an upstream and use it in your configuration.
+
+```ruby
+# /etc/nginx/conf.upstream.d/myapp.conf
+upstream myapp1 {
+    least_conn;
+    server srv1.example.com;
+    server srv2.example.com;
+    server srv3.example.com;
+}
+
+# /etc/nginx/conf.d/http.conf
+server {
+    listen 80;
+    location / {
+        proxy_pass http://myapp1;
+    }
+}
+```
+{% endblock %}
+
+
+{% block configuration_dynamic_upstreams %}
+### Dynamic Upstreams / Discovery Services
+If you want to use dynamic upstreams, for features like auto-scaling, then you have to update
+your upstreams and their IP addresses and reload your NGINX service.
+
+Because the upstreams can be configured in a separate file, you only have to update these files and reload NGINX.
+This is a pretty easy and convenient way to integrate with discovery services.
+
+Once updated, just reload NGINX with this command:
+
+```ruby
+service nginx reload
+```
+{% endblock %}
+
+{% endblock %}
+
+
+## License
+
+As with all Docker images, these likely also contain other software which may be under other licenses (such as Bash, etc from the base distribution, along with any direct or indirect dependencies of the primary software being contained).
+
+As for any pre-built image usage, it is the image user's responsibility to ensure that any use of this image complies with any relevant licenses for all software contained within.
+

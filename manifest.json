@@ -1,0 +1,10 @@
+{
+    "images": {
+        "proxy":[
+            "proxy/latest:latest"
+        ]
+    },
+    "shared_assets": "template/assets",
+    "shared_variables": "template/variables.json",
+    "plugin_directory": ""
+}

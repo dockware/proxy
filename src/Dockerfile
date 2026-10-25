@@ -1,28 +1,25 @@
 # Official Dockware Proxy Image
-# Tag: {{ orca.tag }}
-# Copyright {{ "now"|date("Y") }} dasistweb GmbH
+# Copyright dasistweb GmbH
 
-FROM nginx:1.15.3
+FROM nginx:1.30-trixie
 
-LABEL title="Dockware {{ orca.image }}:{{ orca.tag }}" \
-      version="{{version}}" \
+ARG IMAGE_VERSION=dev
+
+LABEL title="Dockware proxy:${IMAGE_VERSION}" \
+      version="${IMAGE_VERSION}" \
       maintainer="dasistweb GmbH"
 
 
-{% block image_variables %}
 ## ***********************************************************************
 ##  IMAGE VARIABLES
 ## ***********************************************************************
-{% block image_variables_logs %}
-ENV ACCESS_LOG 0
-RUN echo "export ACCESS_LOG=${ACCESS_LOG}" >> /etc/profile
-{% endblock %}
+ENV IMAGE_VERSION=${IMAGE_VERSION}
 
-{% block image_variables_cfcountry %}
-ENV CF_COUNTRY 'not-set'
+ENV ACCESS_LOG=0
+RUN echo "export ACCESS_LOG=${ACCESS_LOG}" >> /etc/profile
+
+ENV CF_COUNTRY=not-set
 RUN echo "export CF_COUNTRY=${CF_COUNTRY}" >> /etc/profile
-{% endblock %}
-{% endblock %}
 
 
 RUN apt-get update \
@@ -36,8 +33,6 @@ RUN apt-get update \
     && apt-get install -y openssl \
     && mkdir /etc/nginx/ssl \
     && openssl req -x509 -nodes -days 365 -newkey rsa:2048 -keyout /etc/nginx/ssl/selfsigned.key -out /etc/nginx/ssl/selfsigned.crt -subj "/C=XX/ST=XXXX/L=XXXX/O=XXXX/CN=localhost" \
-    # ----------------------------------------------------
-    && apt-get install -y libgd-dev \
     # ----------------------------------------------------
     && rm -rf /etc/nginx/conf.d/example_ssl.conf  \
     && mkdir -p /etc/nginx/conf.stream.d \
@@ -79,4 +74,3 @@ ADD entrypoint.sh /entrypoint.sh
 RUN chmod 755 /*.sh
 
 CMD ["/entrypoint.sh"]
-

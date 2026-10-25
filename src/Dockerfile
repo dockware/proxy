@@ -1,29 +1,32 @@
 # Official Dockware Proxy Image
-# Tag: {{ orca.tag }}
-# Copyright {{ "now"|date("Y") }} dasistweb GmbH
+# Copyright dasistweb GmbH
 
 FROM nginx:1.15.3
 
-LABEL title="Dockware {{ orca.image }}:{{ orca.tag }}" \
-      version="{{version}}" \
+ARG IMAGE_VERSION=dev
+
+LABEL title="Dockware proxy:${IMAGE_VERSION}" \
+      version="${IMAGE_VERSION}" \
       maintainer="dasistweb GmbH"
 
 
-{% block image_variables %}
 ## ***********************************************************************
 ##  IMAGE VARIABLES
 ## ***********************************************************************
-{% block image_variables_logs %}
-ENV ACCESS_LOG 0
+ENV IMAGE_VERSION=${IMAGE_VERSION}
+
+ENV ACCESS_LOG=0
 RUN echo "export ACCESS_LOG=${ACCESS_LOG}" >> /etc/profile
-{% endblock %}
 
-{% block image_variables_cfcountry %}
-ENV CF_COUNTRY 'not-set'
+ENV CF_COUNTRY=not-set
 RUN echo "export CF_COUNTRY=${CF_COUNTRY}" >> /etc/profile
-{% endblock %}
-{% endblock %}
 
+
+# Debian stretch is EOL, its packages only exist on archive.debian.org
+# and the archive signing keys in this image have expired, so the archive is trusted explicitly
+RUN echo "deb [trusted=yes] http://archive.debian.org/debian stretch main" > /etc/apt/sources.list \
+    && echo "deb [trusted=yes] http://archive.debian.org/debian-security stretch/updates main" >> /etc/apt/sources.list \
+    && rm -f /etc/apt/sources.list.d/nginx.list
 
 RUN apt-get update \
     # ----------------------------------------------------
@@ -79,4 +82,3 @@ ADD entrypoint.sh /entrypoint.sh
 RUN chmod 755 /*.sh
 
 CMD ["/entrypoint.sh"]
-

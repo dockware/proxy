@@ -3,7 +3,7 @@
 All notable changes of Dockware releases are documented in this file
 using the [Keep a CHANGELOG](https://keepachangelog.com/) principles.
 
-## [unreleased]
+## [1.1.0] - 2026-10-25
 
 ### Breaking Changes
 
@@ -38,7 +38,7 @@ The NGINX update from 1.15.3 to 1.30 affects your custom configurations in `conf
   - Updated base image from NGINX 1.15.3 (Debian stretch, EOL) to nginx:1.30-trixie
   - Removed Orca, the image is now built from a plain `Dockerfile`
 
-## [1.0] - 2020-12-14
+## [1.0.0] - 2020-12-14
 
 ### Added
 

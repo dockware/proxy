@@ -1,0 +1,64 @@
+version: 2.1
+
+parameters:
+  imageTag:
+    type: string
+    description: "The tag of the dockware/proxy image, e.g. 1.0.0"
+    default: ""
+  setLatest:
+    type: boolean
+    description: "defines if the latest tag should be set to this version"
+    default: false
+
+workflows:
+
+  release-image:
+    when:
+      not:
+        # avoid that it automatically triggers on push
+        equal: [ "", << pipeline.parameters.imageTag >> ]
+    jobs:
+      - job-build-push:
+          name: dockware/proxy:<< pipeline.parameters.imageTag >>
+          imageTag: << pipeline.parameters.imageTag >>
+          setLatest: << pipeline.parameters.setLatest >>
+
+jobs:
+
+  job-build-push:
+    machine:
+      image: ubuntu-2204:current
+    resource_class: medium
+    parameters:
+      imageTag:
+        type: string
+      setLatest:
+        type: boolean
+    steps:
+      - checkout
+      # ------------------------------------------------------------------------------------
+      - run:
+          name: Docker Hub Login
+          command: |
+            echo "$DOCKERHUB_PASS" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+      # ------------------------------------------------------------------------------------
+      - run:
+          name: Setup Buildx (QEMU for arm64)
+          command: |
+            docker run --privileged --rm tonistiigi/binfmt --install arm64
+            docker buildx create --name multiarch --use
+            docker buildx inspect --bootstrap
+      # ------------------------------------------------------------------------------------
+      - run:
+          name: Build and push multi-arch image
+          command: |
+            TAGS="-t dockware/proxy:<< parameters.imageTag >>"
+            if [ "<< parameters.setLatest >>" = "true" ]; then
+              TAGS="$TAGS -t dockware/proxy:latest"
+            fi
+            docker buildx build --pull --no-cache --platform linux/amd64,linux/arm64 --build-arg IMAGE_VERSION=<< parameters.imageTag >> $TAGS --push ./src
+      # ------------------------------------------------------------------------------------
+      - run:
+          name: Verify manifest
+          command: |
+            docker buildx imagetools inspect dockware/proxy:<< parameters.imageTag >>

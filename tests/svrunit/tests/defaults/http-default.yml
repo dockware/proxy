@@ -1,0 +1,13 @@
+commands:
+
+  - name: "HTTP request returns the default 418"
+    command: 'timeout 20 bash -c "until [ -s /var/run/nginx.pid ]; do sleep 0.2; done" && curl -s -o /dev/null --max-time 5 -w "HTTP_CODE=%{http_code}" http://127.0.0.1/'
+    expected: "HTTP_CODE=418"
+
+  - name: "HTTP 418 delivers the teapot page"
+    command: 'timeout 20 bash -c "until [ -s /var/run/nginx.pid ]; do sleep 0.2; done" && curl -sS --max-time 5 http://127.0.0.1/'
+    expected: "I cannot brew your coffee because"
+
+  - name: "HTTPS request returns the default 418 (verified against the built-in certificate)"
+    command: 'timeout 20 bash -c "until [ -s /var/run/nginx.pid ]; do sleep 0.2; done" && curl -sS -o /dev/null --max-time 5 -w "HTTP_CODE=%{http_code}" --cacert /etc/nginx/ssl/selfsigned.crt --resolve localhost:443:127.0.0.1 https://localhost/'
+    expected: "HTTP_CODE=418"

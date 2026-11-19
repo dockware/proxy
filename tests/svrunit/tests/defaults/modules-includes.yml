@@ -1,0 +1,37 @@
+commands:
+
+  - name: "Image filter module exists"
+    command: 'test -f /etc/nginx/modules/ngx_http_image_filter_module.so && echo SVRUNIT_PASS'
+    expected: "SVRUNIT_PASS"
+
+  - name: "Required modules are compiled in"
+    command: 'nginx -V 2>&1'
+    expected_and:
+      - "--with-http_ssl_module"
+      - "--with-http_v2_module"
+      - "--with-http_realip_module"
+      - "--with-stream "
+      - "--with-stream_ssl_module"
+
+  - name: "Effective configuration includes all dockware files and folders"
+    command: 'nginx -T 2>&1'
+    expected_and:
+      - "test is successful"
+      - "load_module /etc/nginx/modules/ngx_http_image_filter_module.so;"
+      - "# configuration file /etc/nginx/proxy.conf:"
+      - "# configuration file /etc/nginx/cloudflare.conf:"
+      - "# configuration file /etc/nginx/conf.d/default.conf:"
+      - "include /etc/nginx/conf.upstream.d/*.conf;"
+      - "include /etc/nginx/conf.stream.d/*.conf;"
+
+  - name: "Custom configuration folders exist"
+    command: 'test -d /etc/nginx/conf.d && test -d /etc/nginx/conf.stream.d && test -d /etc/nginx/conf.upstream.d && echo SVRUNIT_PASS'
+    expected: "SVRUNIT_PASS"
+
+  - name: "Cloudflare IP ranges are configured"
+    command: 'test "$(grep -c "^set_real_ip_from" /etc/nginx/cloudflare.conf)" -gt 5 && grep -q "^real_ip_header CF-Connecting-IP;" /etc/nginx/cloudflare.conf && echo SVRUNIT_PASS'
+    expected: "SVRUNIT_PASS"
+
+  - name: "Default 418 page exists"
+    command: 'test -s /usr/share/nginx/html/418.html && echo SVRUNIT_PASS'
+    expected: "SVRUNIT_PASS"

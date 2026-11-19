@@ -3,3 +3,11 @@
 
 # graft's local graph cache — regenerable, not committed (run `graft build`).
 /graft/
+
+# SVRUnit test tooling: dependencies and reports
+/vendor/
+/.reports/
+
+# >>> sightdeck: agent files of a project stored on this computer (managed, do not edit)
+/.agents/sightdeck/
+# <<< sightdeck

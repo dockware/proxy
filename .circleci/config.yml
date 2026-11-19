@@ -3,14 +3,38 @@ version: 2.1
 parameters:
   imageTag:
     type: string
-    description: "The tag of the dockware/proxy image, e.g. 1.0.0"
+    description: "The tag of the dockware/proxy image, e.g. 1.1.1. Empty = test only, nothing is published."
     default: ""
   setLatest:
     type: boolean
     description: "defines if the latest tag should be set to this version"
     default: false
 
+# -----------------------------------------------------------------------------------------------------
+# Every push runs "test-image": build + SVRUnit on amd64 and arm64, no registry credentials.
+# "release-image" only runs when triggered manually with imageTag. Each architecture is
+# built and tested natively, and only the exact tested image is pushed (no rebuild).
+# The multi-arch tag is then created from the pushed digests.
+# -----------------------------------------------------------------------------------------------------
+
 workflows:
+
+  test-image:
+    when:
+      equal: [ "", << pipeline.parameters.imageTag >> ]
+    jobs:
+      - job-build-test:
+          name: test-amd64
+          resourceClass: medium
+          imageArch: amd64
+          imageTag: ci
+          publish: false
+      - job-build-test:
+          name: test-arm64
+          resourceClass: arm.medium
+          imageArch: arm64
+          imageTag: ci
+          publish: false
 
   release-image:
     when:
@@ -18,24 +42,113 @@ workflows:
         # avoid that it automatically triggers on push
         equal: [ "", << pipeline.parameters.imageTag >> ]
     jobs:
-      - job-build-push:
+      - job-build-test:
+          name: dockware/proxy:<< pipeline.parameters.imageTag >>-amd64
+          resourceClass: medium
+          imageArch: amd64
+          imageTag: << pipeline.parameters.imageTag >>
+          publish: true
+      - job-build-test:
+          name: dockware/proxy:<< pipeline.parameters.imageTag >>-arm64
+          resourceClass: arm.medium
+          imageArch: arm64
+          imageTag: << pipeline.parameters.imageTag >>
+          publish: true
+      - job-publish-manifest:
           name: dockware/proxy:<< pipeline.parameters.imageTag >>
           imageTag: << pipeline.parameters.imageTag >>
           setLatest: << pipeline.parameters.setLatest >>
+          requires:
+            - dockware/proxy:<< pipeline.parameters.imageTag >>-amd64
+            - dockware/proxy:<< pipeline.parameters.imageTag >>-arm64
+
+# -----------------------------------------------------------------------------------------------------
 
 jobs:
 
-  job-build-push:
+  job-build-test:
+    parameters:
+      resourceClass:
+        type: string
+      imageArch:
+        type: string
+      imageTag:
+        type: string
+      publish:
+        type: boolean
     machine:
       image: ubuntu-2204:current
-    resource_class: medium
+    resource_class: << parameters.resourceClass >>
+    steps:
+      - checkout
+      # ------------------------------------------------------------------------------------
+      - when:
+          condition: << parameters.publish >>
+          steps:
+            - run:
+                name: Refuse to overwrite an existing release tag
+                command: |
+                  if docker manifest inspect dockware/proxy:<< parameters.imageTag >> >/dev/null 2>&1; then
+                    echo "dockware/proxy:<< parameters.imageTag >> already exists. Use a new tag for the release."
+                    exit 1
+                  fi
+      # ------------------------------------------------------------------------------------
+      - run:
+          name: Install SVRUnit
+          command: |
+            sudo apt-get update
+            sudo apt-get install -y php-cli php-xml php-mbstring
+            make install
+      # ------------------------------------------------------------------------------------
+      - run:
+          name: Build image (<< parameters.imageArch >>, --pull --no-cache, pinned base digest)
+          command: |
+            test "$(uname -m)" = "$( [ '<< parameters.imageArch >>' = 'amd64' ] && echo x86_64 || echo aarch64 )"
+            make build version=<< parameters.imageTag >>
+      # ------------------------------------------------------------------------------------
+      - run:
+          name: Run SVRUnit tests (<< parameters.imageArch >>)
+          command: |
+            make svrunit version=<< parameters.imageTag >>
+      - store_test_results:
+          path: .reports
+      - store_artifacts:
+          path: .reports
+          destination: svrunit-<< parameters.imageArch >>
+      # ------------------------------------------------------------------------------------
+      # publishing only happens after the tests above were successful,
+      # and it pushes the tested image as it is, without building it again
+      - when:
+          condition: << parameters.publish >>
+          steps:
+            - run:
+                name: Docker Hub Login
+                command: |
+                  echo "$DOCKERHUB_PASS" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
+            - run:
+                name: Push tested image as dockware/proxy:<< parameters.imageTag >>-<< parameters.imageArch >>
+                command: |
+                  docker tag dockware/proxy:<< parameters.imageTag >> dockware/proxy:<< parameters.imageTag >>-<< parameters.imageArch >>
+                  docker push dockware/proxy:<< parameters.imageTag >>-<< parameters.imageArch >>
+                  mkdir -p /tmp/workspace
+                  docker inspect --format '{{index .RepoDigests 0}}' dockware/proxy:<< parameters.imageTag >>-<< parameters.imageArch >> | tee /tmp/workspace/digest-<< parameters.imageArch >>
+            - persist_to_workspace:
+                root: /tmp/workspace
+                paths:
+                  - digest-<< parameters.imageArch >>
+
+  job-publish-manifest:
     parameters:
       imageTag:
         type: string
       setLatest:
         type: boolean
+    machine:
+      image: ubuntu-2204:current
+    resource_class: medium
     steps:
-      - checkout
+      - attach_workspace:
+          at: /tmp/workspace
       # ------------------------------------------------------------------------------------
       - run:
           name: Docker Hub Login
@@ -43,22 +156,27 @@ jobs:
             echo "$DOCKERHUB_PASS" | docker login -u "$DOCKERHUB_USERNAME" --password-stdin
       # ------------------------------------------------------------------------------------
       - run:
-          name: Setup Buildx (QEMU for arm64)
+          name: Create multi-arch tag from the tested digests
           command: |
-            docker run --privileged --rm tonistiigi/binfmt --install arm64
-            docker buildx create --name multiarch --use
-            docker buildx inspect --bootstrap
+            AMD64="$(cat /tmp/workspace/digest-amd64)"
+            ARM64="$(cat /tmp/workspace/digest-arm64)"
+            docker buildx imagetools create -t dockware/proxy:<< parameters.imageTag >> "$AMD64" "$ARM64"
       # ------------------------------------------------------------------------------------
       - run:
-          name: Build and push multi-arch image
+          name: Verify manifest contains exactly the tested digests
           command: |
-            TAGS="-t dockware/proxy:<< parameters.imageTag >>"
-            if [ "<< parameters.setLatest >>" = "true" ]; then
-              TAGS="$TAGS -t dockware/proxy:latest"
-            fi
-            docker buildx build --pull --no-cache --platform linux/amd64,linux/arm64 --build-arg IMAGE_VERSION=<< parameters.imageTag >> $TAGS --push ./src
-      # ------------------------------------------------------------------------------------
-      - run:
-          name: Verify manifest
-          command: |
+            RAW="$(docker buildx imagetools inspect --raw dockware/proxy:<< parameters.imageTag >>)"
+            echo "$RAW"
+            for arch in amd64 arm64; do
+              DIGEST="$(cut -d@ -f2 /tmp/workspace/digest-$arch)"
+              echo "$RAW" | grep -q "$DIGEST" || { echo "digest of $arch missing in manifest"; exit 1; }
+            done
             docker buildx imagetools inspect dockware/proxy:<< parameters.imageTag >>
+      # ------------------------------------------------------------------------------------
+      - when:
+          condition: << parameters.setLatest >>
+          steps:
+            - run:
+                name: Set latest to the tested digests
+                command: |
+                  docker buildx imagetools create -t dockware/proxy:latest "$(cat /tmp/workspace/digest-amd64)" "$(cat /tmp/workspace/digest-arm64)"

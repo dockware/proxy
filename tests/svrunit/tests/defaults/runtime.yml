@@ -1,0 +1,33 @@
+# Every check prints a marker only if all of its sub commands succeeded,
+# because SVRUnit compares the output only and ignores exit codes.
+commands:
+
+  - name: "Runtime is the patched NGINX 1.30.7"
+    command: 'nginx -v 2>&1'
+    expected: "nginx version: nginx/1.30.7"
+
+  # negative check: vulnerable versions of the 2026-11-18 advisories and the old 1.0 image
+  - name: "Runtime is none of the old vulnerable versions"
+    command: 'v=$(nginx -v 2>&1); case "$v" in *nginx/1.30.6*|*nginx/1.31.8*|*nginx/1.15.3*) echo "VULNERABLE $v";; *nginx/1.30.7) echo SVRUNIT_PASS;; *) echo "UNEXPECTED $v";; esac'
+    expected: "SVRUNIT_PASS"
+
+  - name: "NGINX configuration test is successful"
+    command: 'timeout 20 bash -c "until [ -s /var/run/nginx.pid ]; do sleep 0.2; done" && nginx -t 2>&1'
+    expected: "configuration file /etc/nginx/nginx.conf test is successful"
+
+  # process names via comm and PPid, because the "nginx: master/worker process" titles
+  # are not visible under emulation (e.g. amd64 on Apple Silicon)
+  - name: "NGINX master process is running"
+    command: 'timeout 20 bash -c "until [ -s /var/run/nginx.pid ]; do sleep 0.2; done" && pid=$(cat /var/run/nginx.pid) && kill -0 "$pid" && echo "MASTER=$(cat /proc/$pid/comm)"'
+    expected: "MASTER=nginx"
+
+  - name: "NGINX runs 2 worker processes"
+    command: 'timeout 20 bash -c "until [ -s /var/run/nginx.pid ]; do sleep 0.2; done" && sleep 1 && pid=$(cat /var/run/nginx.pid) && echo "WORKERS=$(grep -l "^PPid:[[:space:]]*$pid$" /proc/[0-9]*/status | while read f; do cat ${f%status}comm; done | grep -c "^nginx$")"'
+    expected: "WORKERS=2"
+
+  - name: "Entrypoint is PID 1"
+    command: 'tr "\0" " " < /proc/1/cmdline && test -x /entrypoint.sh && echo SVRUNIT_PASS'
+    expected_and:
+      - "/entrypoint.sh"
+      - "SVRUNIT_PASS"
+

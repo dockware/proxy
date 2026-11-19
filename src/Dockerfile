@@ -1,7 +1,10 @@
 # Official Dockware Proxy Image
 # Copyright dasistweb GmbH
 
-FROM nginx:1.30-trixie
+# Pinned to the patched stable release (security fixes of 2026-11-18) and to the
+# verified multi-arch index digest, so builds never fall back to a stale cached base.
+# Update the tag AND the digest together, see README "Release Checklist".
+FROM nginx:1.30.7-trixie@sha256:7fad6c0dff97965adbddf28027d934b111fc0221a554315dc274712f3fba24d3
 
 ARG IMAGE_VERSION=dev
 

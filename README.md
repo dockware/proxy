@@ -25,6 +25,28 @@ Documentation: https://dockware.io/docs
 
 Maintained by: dasistweb GmbH (https://www.dasistweb.de)
 
+## Security Updates
+
+dockware/proxy 1.1.1 ships NGINX 1.30.7 with the fixes of the NGINX security advisories of 2026-11-18.
+Older images (1.1.0 with NGINX 1.30.x, 1.0.0 with NGINX 1.15.3) are affected.
+
+To apply an update you have to pull the new image **and recreate** the container.
+A plain `docker restart` keeps running the old image.
+
+```bash
+docker compose pull proxy
+docker compose up -d proxy
+```
+
+If you use a fixed tag (e.g. `dockware/proxy:1.1.0`), change it explicitly to the new tag.
+`latest` only moves when a release is explicitly published with it.
+
+You can check the NGINX version of a running container with:
+
+```bash
+docker exec <container> nginx -v
+```
+
 ## How to use this image
 
 ### Quick Start
@@ -243,6 +265,71 @@ Once updated, just reload NGINX with this command:
 ```ruby
 service nginx reload
 ```
+
+## Development
+
+### Requirements
+
+  - Docker (with a running daemon)
+  - PHP 8.1+ with the `xml` and `mbstring` extensions on the host (runs SVRUnit)
+  - make
+
+SVRUnit only runs on the host.
+Nothing of it is installed in the dockware/proxy image.
+
+### Build
+
+```bash
+make build version=dev
+```
+
+The build always uses `--pull --no-cache`. The base image is pinned to a tag and a digest in `src/Dockerfile`.
+
+### Tests
+
+The image is tested with [SVRUnit](https://github.com/svrunit/svrunit).
+
+```bash
+make install                      # installs SVRUnit into ./vendor (Composer runs in Docker)
+make svrunit version=dev          # runs all tests against dockware/proxy:dev
+```
+
+  - `tests/svrunit/suite.xml` defines the suites, the YAML tests live in `tests/svrunit/tests`.
+  - Every suite starts a fresh container of the image (also per ENV variant) and runs its commands inside it.
+  - The command exits non-zero if any test fails.
+
+SVRUnit only compares the output of a command and ignores its exit code.
+Every test with sub commands therefore prints a marker (e.g. `SVRUNIT_PASS`) only if all of them succeeded.
+
+### Reports
+
+  - `.reports/report.xml` JUnit report
+  - `.reports/index.html` HTML report
+
+## Release Checklist
+
+Releases are published by CircleCI only. Nothing is published on a normal push.
+
+1. Check the NGINX security advisories (https://nginx.org/en/security_advisories.html) and the latest `nginx:<version>-trixie` tag.
+2. Update `FROM` in `src/Dockerfile` (tag **and** digest). Get the digest with:
+   ```bash
+   docker buildx imagetools inspect nginx:<version>-trixie
+   ```
+3. Update the expected and the old vulnerable versions in `tests/svrunit/tests/defaults/runtime.yml`.
+4. Run `make build version=dev && make svrunit version=dev` locally.
+5. Update `CHANGELOG.md` with the new version and date.
+6. Merge, wait until the `test-image` workflow is green on amd64 **and** arm64.
+7. Trigger the `release-image` pipeline in CircleCI on the release commit with a **new** `imageTag` (e.g. `1.1.1`).
+   Existing tags are never overwritten, the pipeline refuses them.
+8. Set `setLatest=true` only on purpose, once the new version should become `latest`.
+9. Verify the published image for both architectures:
+   ```bash
+   docker buildx imagetools inspect dockware/proxy:<tag>
+   docker run --rm --platform linux/amd64 --entrypoint nginx dockware/proxy:<tag> -v
+   docker run --rm --platform linux/arm64 --entrypoint nginx dockware/proxy:<tag> -v
+   ```
+   The digests must match the ones in the CircleCI job output (`digest-amd64`, `digest-arm64`).
+10. Tell users to pull and recreate their containers (see "Security Updates").
 
 ## License
 

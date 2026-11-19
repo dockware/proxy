@@ -1,0 +1,31 @@
+<!--
+    SVRUnit suite for dockware/proxy, run it with "make svrunit version=<tag>".
+    {{tag}} is replaced with the image tag. Every suite starts a fresh container of the image.
+-->
+<svrunit setupTime="3">
+
+    <testsuites>
+
+        <testsuite name="Defaults" dockerImage="dockware/proxy:{{tag}}">
+            <directory>./tests/defaults</directory>
+        </testsuite>
+
+        <testsuite name="ACCESS_LOG=0" dockerImage="dockware/proxy:{{tag}}" dockerEnv="ACCESS_LOG=0">
+            <directory>./tests/features/access-log-off</directory>
+        </testsuite>
+
+        <testsuite name="ACCESS_LOG=1" dockerImage="dockware/proxy:{{tag}}" dockerEnv="ACCESS_LOG=1">
+            <directory>./tests/features/access-log-on</directory>
+        </testsuite>
+
+        <testsuite name="CF_COUNTRY=not-set" dockerImage="dockware/proxy:{{tag}}" dockerEnv="CF_COUNTRY=not-set">
+            <directory>./tests/features/cf-country-not-set</directory>
+        </testsuite>
+
+        <testsuite name="CF_COUNTRY=DE" dockerImage="dockware/proxy:{{tag}}" dockerEnv="CF_COUNTRY=DE">
+            <directory>./tests/features/cf-country-de</directory>
+        </testsuite>
+
+    </testsuites>
+
+</svrunit>

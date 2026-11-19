@@ -12,9 +12,15 @@ help:
 	@echo "--------------------------------------------------------------------------------------------"
 	@printf "\033[35mDevOps:%-30s\033[0m %s\n"
 	@grep -E '^[a-zA-Z_-]+:.*?##3 .*$$' $(firstword $(MAKEFILE_LIST)) | awk 'BEGIN {FS = ":.*?##3 "}; {printf "\033[35m  - %-30s\033[0m %s\n", $$1, $$2}'
+	@echo "--------------------------------------------------------------------------------------------"
+	@printf "\033[32mTests:%-30s\033[0m %s\n"
+	@grep -E '^[a-zA-Z_-]+:.*?##4 .*$$' $(firstword $(MAKEFILE_LIST)) | awk 'BEGIN {FS = ":.*?##4 "}; {printf "\033[32m  - %-30s\033[0m %s\n", $$1, $$2}'
 
 # ----------------------------------------------------------------------------------------------------------------
 #// Installation
+
+install: ##1 Installs the test dependencies (SVRUnit) with Composer in Docker
+	docker run --rm -u "$$(id -u):$$(id -g)" -e COMPOSER_HOME=/tmp/composer -v "$(CURDIR)":/app -w /app composer:2 install --no-interaction
 
 clear: ##1 Clears all dangling images
 	docker images -aq -f 'dangling=true' | xargs docker rmi
@@ -22,11 +28,12 @@ clear: ##1 Clears all dangling images
 
 # ----------------------------------------------------------------------------------------------------------------
 #// Building
-all: ##2 Helper that builds and analyzes the image
+all: ##2 Helper that builds, tests and analyzes the image
 ifndef version
 	$(error Please provide the argument version=xyz to run the command)
 endif
 	make build version=$(version)
+	make svrunit version=$(version)
 	make analyze version=$(version)
 
 # ----------------------------------------------------------------------------------------------------------------
@@ -35,7 +42,7 @@ build: ##3 Builds the proxy image
 ifndef version
 	$(error Please provide the argument version=xyz to run the command)
 endif
-	DOCKER_BUILDKIT=1 docker build --no-cache --build-arg IMAGE_VERSION=$(version) -t dockware/proxy:$(version) ./src
+	DOCKER_BUILDKIT=1 docker build --pull --no-cache --build-arg IMAGE_VERSION=$(version) -t dockware/proxy:$(version) ./src
 
 analyze: ##3 Shows the size of the image
 ifndef version
@@ -50,9 +57,11 @@ endif
 	rm -rf proxy.tar
 	rm -rf proxy.tar.gz | true
 
-multi-push: ##3 Builds and analyzes the image, then pushes it for amd64 and arm64
+# ----------------------------------------------------------------------------------------------------------------
+#// Tests
+
+svrunit: ##4 Runs all SVRUnit tests against the local image dockware/proxy:<version>
 ifndef version
 	$(error Please provide the argument version=xyz to run the command)
 endif
-	make all version=$(version)
-	docker buildx build --no-cache --platform linux/amd64,linux/arm64 --pull --build-arg IMAGE_VERSION=$(version) -t dockware/proxy:$(version) --push ./src
+	php ./vendor/bin/svrunit test --configuration=./tests/svrunit/suite.xml --docker-tag=$(version) --debug --report-junit --report-html

@@ -1,0 +1,15 @@
+commands:
+
+  - name: "Self-signed certificate and key exist"
+    command: 'test -s /etc/nginx/ssl/selfsigned.crt && test -s /etc/nginx/ssl/selfsigned.key && echo SVRUNIT_PASS'
+    expected: "SVRUNIT_PASS"
+
+  - name: "Self-signed key matches the certificate"
+    command: 'a=$(openssl x509 -noout -pubkey -in /etc/nginx/ssl/selfsigned.crt | sha256sum) && b=$(openssl pkey -pubout -in /etc/nginx/ssl/selfsigned.key | sha256sum) && test "$a" = "$b" && echo SVRUNIT_PASS'
+    expected: "SVRUNIT_PASS"
+
+  - name: "Self-signed certificate is valid for localhost and not expired"
+    command: 'openssl x509 -noout -subject -checkend 0 -in /etc/nginx/ssl/selfsigned.crt'
+    expected_and:
+      - "CN=localhost"
+      - "Certificate will not expire"

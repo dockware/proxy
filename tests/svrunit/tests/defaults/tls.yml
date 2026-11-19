@@ -1,0 +1,17 @@
+# Requests against the built-in HTTPS server (443, self-signed certificate).
+# curl verifies the certificate with --cacert, no -k.
+commands:
+
+  - name: "TLS certificate verification is active (wrong host name is rejected)"
+    command: 'timeout 20 bash -c "until [ -s /var/run/nginx.pid ]; do sleep 0.2; done"; curl -sS -o /dev/null --max-time 5 --cacert /etc/nginx/ssl/selfsigned.crt --resolve wrong.test:443:127.0.0.1 https://wrong.test/; echo "CURL_EXIT=$?"'
+    expected: "CURL_EXIT=60"
+
+  - name: "TLS 1.3 with a small POST body"
+    command: 'timeout 20 bash -c "until [ -s /var/run/nginx.pid ]; do sleep 0.2; done" && curl -sS -v -o /dev/null --max-time 10 --tlsv1.3 --tls-max 1.3 --cacert /etc/nginx/ssl/selfsigned.crt --resolve localhost:443:127.0.0.1 --data "svrunit=small-body" -w "HTTP_CODE=%{http_code}" https://localhost/ 2>&1'
+    expected_and:
+      - "SSL connection using TLSv1.3"
+      - "HTTP_CODE=418"
+
+  - name: "HTTP/2 module is compiled in (needed for http2 on in conf.d)"
+    command: 'nginx -V 2>&1'
+    expected: "--with-http_v2_module"

@@ -1,0 +1,5 @@
+commands:
+
+  - name: "CF_COUNTRY=DE sets the CF-IPCountry header in the effective configuration"
+    command: 'timeout 20 bash -c "until [ -s /var/run/nginx.pid ]; do sleep 0.2; done" && out=$(nginx -T 2>&1) && echo "$out" | grep -q "test is successful" && echo "$out" | grep -q "proxy_set_header CF-IPCountry DE;" && ! echo "$out" | grep -q "COUNTRY_ISO2" && echo SVRUNIT_PASS'
+    expected: "SVRUNIT_PASS"

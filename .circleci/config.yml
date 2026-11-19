@@ -11,7 +11,8 @@ parameters:
     default: false
 
 # -----------------------------------------------------------------------------------------------------
-# Every push runs "test-image": build + SVRUnit on amd64 and arm64, no registry credentials.
+# Nothing runs on push. A manual trigger without imageTag runs "test-image":
+# build + SVRUnit on amd64 and arm64, no registry credentials.
 # "release-image" only runs when triggered manually with imageTag. Each architecture is
 # built and tested natively, and only the exact tested image is pushed (no rebuild).
 # The multi-arch tag is then created from the pushed digests.
@@ -21,7 +22,10 @@ workflows:
 
   test-image:
     when:
-      equal: [ "", << pipeline.parameters.imageTag >> ]
+      and:
+        - equal: [ "", << pipeline.parameters.imageTag >> ]
+        # only manual triggers (UI "Trigger Pipeline" or API), never on push
+        - equal: [ api, << pipeline.trigger_source >> ]
     jobs:
       - job-build-test:
           name: test-amd64

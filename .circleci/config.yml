@@ -172,8 +172,13 @@ jobs:
             RAW="$(docker buildx imagetools inspect --raw dockware/proxy:<< parameters.imageTag >>)"
             echo "$RAW"
             for arch in amd64 arm64; do
-              DIGEST="$(cut -d@ -f2 /tmp/workspace/digest-$arch)"
-              echo "$RAW" | grep -q "$DIGEST" || { echo "digest of $arch missing in manifest"; exit 1; }
+              # the pushed per-arch tag is an index (image + attestation), and imagetools create
+              # flattens it, so compare the image manifest of that index, not the index digest
+              PUSHED="$(cat /tmp/workspace/digest-$arch)"
+              DIGEST="$(docker buildx imagetools inspect --raw "$PUSHED" | jq -r --arg a "$arch" 'if .manifests then .manifests[] | select(.platform.architecture == $a) | .digest else empty end')"
+              [ -n "$DIGEST" ] || DIGEST="$(echo "$PUSHED" | cut -d@ -f2)"
+              echo "$arch: expecting $DIGEST"
+              echo "$RAW" | jq -e --arg a "$arch" --arg d "$DIGEST" '.manifests[] | select(.platform.architecture == $a and .digest == $d)' >/dev/null || { echo "digest of $arch missing in manifest"; exit 1; }
             done
             docker buildx imagetools inspect dockware/proxy:<< parameters.imageTag >>
       # ------------------------------------------------------------------------------------

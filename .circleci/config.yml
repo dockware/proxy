@@ -86,17 +86,6 @@ jobs:
     steps:
       - checkout
       # ------------------------------------------------------------------------------------
-      - when:
-          condition: << parameters.publish >>
-          steps:
-            - run:
-                name: Refuse to overwrite an existing release tag
-                command: |
-                  if docker manifest inspect dockware/proxy:<< parameters.imageTag >> >/dev/null 2>&1; then
-                    echo "dockware/proxy:<< parameters.imageTag >> already exists. Use a new tag for the release."
-                    exit 1
-                  fi
-      # ------------------------------------------------------------------------------------
       - run:
           name: Install SVRUnit
           command: |

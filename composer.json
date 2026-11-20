@@ -2,7 +2,7 @@
   "name": "dockware/proxy",
   "description": "Test tooling for the dockware/proxy image (not part of the image)",
   "require-dev": {
-    "svrunit/svrunit": "dev-main#ce6afe60efe15104792e3130c2f08a45a4231636"
+    "svrunit/svrunit": "1.9.0"
   },
   "config": {
     "platform": {
